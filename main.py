@@ -51,10 +51,6 @@ if __name__ == '__main__':
     client = WeChatClient(app_id, app_secret)
     wm = WeChatMessage(client)
 
-    # Debug: print all follower OpenIDs
-    followers = client.user.get_followers()
-    print("Followers OpenIDs:", followers)
-
     f = open("users_info.json", encoding="utf-8")
     js_text = json.load(f)
     f.close()
