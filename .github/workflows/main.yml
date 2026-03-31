@@ -21,10 +21,7 @@ jobs:
         run: pip install requests pillow
       - name: Run
         env:
-          CORP_ID: ${{ secrets.CORP_ID }}
-          AGENT_ID: ${{ secrets.AGENT_ID }}
-          AGENT_SECRET: ${{ secrets.AGENT_SECRET }}
-          USER_ID: ${{ secrets.USER_ID }}
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+          SERVER_CHAN_KEY: ${{ secrets.SERVER_CHAN_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python main.py
