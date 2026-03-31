@@ -1,0 +1,21 @@
+name: Test Image Send
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install requests pillow wechatpy
+      - name: Add OPEN_ID secret and run test
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          OPEN_ID: olZcB2deavT1le30_eC0EMiQSUBQ
+        run: python test_image_send.py
