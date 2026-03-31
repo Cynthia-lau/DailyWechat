@@ -1,29 +1,26 @@
 name: send card
+
 on:
   schedule:
-  - cron:  '0 23 * * *'
+    - cron: '30 23 * * *'
   workflow_dispatch:
 
 jobs:
-  send_message:
+  send-card:
     runs-on: ubuntu-latest
-    name: send card
-
     steps:
-    - name: checkout
-      uses: actions/checkout@v4
-      with:
-        ref: master
-
-    - name: sender
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        architecture: 'x64'
-    - run: pip install -r ./requirements.txt && python ./main.py
-
-    env:
-      APP_ID: ${{ secrets.APP_ID }}
-      APP_SECRET: ${{ secrets.APP_SECRET }}
-      TEMPLATE_ID: ${{ secrets.TEMPLATE_ID }}
-      WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install fonts
+        run: sudo apt-get install -y fonts-wqy-zenhei
+      - name: Install dependencies
+        run: pip install requests wechatpy pillow
+      - name: Run
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          TEMPLATE_ID: ${{ secrets.TEMPLATE_ID }}
+          WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+        run: python main.py
