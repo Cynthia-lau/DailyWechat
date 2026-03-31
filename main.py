@@ -1,177 +1,210 @@
-from wechatpy import WeChatClient
 import os
-import json
 import io
+import json
+import base64
+import time
 import requests
-import hashlib
 from datetime import datetime, timedelta
 from PIL import Image, ImageDraw, ImageFont
 
 nowtime = datetime.utcnow() + timedelta(hours=8)
-today = datetime.strptime(str(nowtime.date()), "%Y-%m-%d")
+today   = datetime.strptime(str(nowtime.date()), "%Y-%m-%d")
+
+REPO = "Cynthia-lau/DailyWechat"
+
+# ── Helpers ────────────────────────────────────────────────────────
 
 def get_time():
-    dictDate = {'Monday': '星期一', 'Tuesday': '星期二', 'Wednesday': '星期三',
-                'Thursday': '星期四', 'Friday': '星期五', 'Saturday': '星期六', 'Sunday': '星期天'}
-    a = dictDate[nowtime.strftime('%A')]
-    return nowtime.strftime("%Y年%m月%d日") + " " + a
+    days = {'Monday':'星期一','Tuesday':'星期二','Wednesday':'星期三',
+            'Thursday':'星期四','Friday':'星期五','Saturday':'星期六','Sunday':'星期天'}
+    return nowtime.strftime("%Y年%m月%d日") + " " + days[nowtime.strftime('%A')]
 
 def get_words():
     try:
-        resp = requests.get("https://tenapi.cn/v2/yiyan?format=json", timeout=10)
-        words = resp.json()
-        if words.get('code') == 200:
-            return words['data']['hitokoto']
+        r = requests.get("https://tenapi.cn/v2/yiyan?format=json", timeout=10)
+        d = r.json()
+        if d.get('code') == 200:
+            return d['data']['hitokoto']
     except Exception:
         pass
     return "每天都是新的开始。"
 
 def get_weather(city, key):
-    url = f"https://api.seniverse.com/v3/weather/daily.json?key={key}&location={city}&language=zh-Hans&unit=c&start=-1&days=5"
+    url = (f"https://api.seniverse.com/v3/weather/daily.json"
+           f"?key={key}&location={city}&language=zh-Hans&unit=c&start=-1&days=5")
     res = requests.get(url).json()
-    weather = res['results'][0]['daily'][0]
-    city_name = res['results'][0]['location']['name']
-    return city_name, weather
+    w   = res['results'][0]['daily'][0]
+    c   = res['results'][0]['location']['name']
+    return c, w
 
 def get_count(born_date):
-    delta = today - datetime.strptime(born_date, "%Y-%m-%d")
-    return delta.days
+    return (today - datetime.strptime(born_date, "%Y-%m-%d")).days
 
 def get_birthday(birthday):
-    nextdate = datetime.strptime(str(today.year) + "-" + birthday, "%Y-%m-%d")
-    if nextdate < today:
-        nextdate = nextdate.replace(year=nextdate.year + 1)
-    return (nextdate - today).days
+    nxt = datetime.strptime(str(today.year) + "-" + birthday, "%Y-%m-%d")
+    if nxt < today:
+        nxt = nxt.replace(year=nxt.year + 1)
+    return (nxt - today).days
+
+# ── Font ───────────────────────────────────────────────────────────
 
 def load_font(size):
-    for path in [
-        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "simhei.ttf",
-    ]:
+    for p in ["/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+              "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+              "simhei.ttf"]:
         try:
-            return ImageFont.truetype(path, size)
-        except:
-            continue
+            return ImageFont.truetype(p, size)
+        except Exception:
+            pass
     return ImageFont.load_default()
 
+# ── Card generator ─────────────────────────────────────────────────
+
+def weather_emoji(text):
+    if any(k in text for k in ['晴']): return '☀️'
+    if any(k in text for k in ['多云','阴']): return '⛅'
+    if any(k in text for k in ['雨']): return '🌧️'
+    if any(k in text for k in ['雪']): return '❄️'
+    if any(k in text for k in ['雾','霾']): return '🌫️'
+    return '🌤️'
+
 def generate_card(data):
-    W, H = 540, 740
-    BG       = (255, 248, 240)
-    ACCENT   = (230, 90, 80)
-    DARK     = (40, 40, 40)
-    GRAY     = (180, 180, 180)
+    W, H     = 900, 480
+    BG       = (250, 246, 240)
+    ACCENT   = (210, 75, 65)
+    DARK     = (35, 35, 35)
+    MID      = (100, 100, 100)
+    GRAY     = (210, 210, 210)
     WHITE    = (255, 255, 255)
-    SOFT     = (245, 235, 230)
 
     img  = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(img)
 
-    f52 = load_font(52)
+    f56 = load_font(56)
     f34 = load_font(34)
-    f26 = load_font(26)
-    f20 = load_font(20)
+    f28 = load_font(28)
+    f22 = load_font(22)
 
-    # Header
-    draw.rectangle([0, 0, W, 140], fill=ACCENT)
-    draw.text((30, 22), f"Hi, {data['name']} 👋",    fill=WHITE, font=f52)
-    draw.text((30, 95), data['time'],                 fill=WHITE, font=f20)
+    # Left accent bar
+    draw.rectangle([0, 0, 10, H], fill=ACCENT)
 
-    # Weather card
-    draw.rounded_rectangle([20, 158, W-20, 320], radius=16, fill=WHITE)
-    draw.text((40, 172), f"📍 {data['city']}",        fill=DARK,  font=f26)
-    draw.text((40, 212), f"🌤  {data['weather']}",    fill=DARK,  font=f34)
-    draw.text((40, 264), f"🌡  {data['tem_low']}°C — {data['tem_high']}°C    💨 {data['wind']}",
-              fill=DARK, font=f26)
+    # Greeting
+    draw.text((38, 28),  f"Hi, {data['name']} 👋",  fill=ACCENT, font=f56)
+    draw.text((38, 100), data['time'],                fill=MID,    font=f28)
 
-    # Stats card
-    draw.rounded_rectangle([20, 338, W-20, 460], radius=16, fill=WHITE)
-    draw.text((40, 354), f"🎂  距生日还有  {data['birthday_left']}  天", fill=DARK, font=f26)
-    draw.line([(40, 402), (W-40, 402)], fill=GRAY, width=1)
-    draw.text((40, 414), f"🗓  已陪伴  {data['born_days']}  天",         fill=DARK, font=f26)
+    # Divider
+    draw.line([(38, 148), (W - 38, 148)], fill=GRAY, width=1)
 
-    # Quote card
-    draw.rounded_rectangle([20, 478, W-20, 640], radius=16, fill=WHITE)
-    draw.text((40, 492), "✨ 每日一言", fill=ACCENT, font=f26)
-    draw.line([(40, 530), (W-40, 530)], fill=GRAY, width=1)
-    words = data.get('words', '')
-    # simple word wrap at ~18 chars
-    lines, line = [], ""
+    # Weather row
+    emoji = weather_emoji(data['weather'])
+    draw.text((38, 162),
+              f"{emoji} {data['weather']}  🌡 {data['tem_low']}°C ~ {data['tem_high']}°C  "
+              f"💨 {data['wind']}  📍 {data['city']}",
+              fill=DARK, font=f28)
+
+    # Stats row
+    draw.text((38, 215),
+              f"🎂 距生日还有 {data['birthday_left']} 天        "
+              f"🗓 已陪伴 {data['born_days']} 天",
+              fill=DARK, font=f28)
+
+    # Divider
+    draw.line([(38, 268), (W - 38, 268)], fill=GRAY, width=1)
+
+    # Quote
+    draw.text((38, 282), "✨ 每日一言", fill=ACCENT, font=f28)
+    words, line, lines = data.get('words', ''), "", []
     for ch in words:
         line += ch
-        if len(line) >= 18:
-            lines.append(line)
-            line = ""
-    if line:
-        lines.append(line)
-    y = 542
-    for l in lines[:3]:
-        draw.text((40, y), l, fill=DARK, font=f26)
-        y += 36
+        if len(line) >= 30:
+            lines.append(line); line = ""
+    if line: lines.append(line)
+    y = 324
+    for l in lines[:2]:
+        draw.text((38, y), l, fill=DARK, font=f28)
+        y += 40
 
-    # Footer
-    draw.rectangle([0, 670, W, H], fill=ACCENT)
-    draw.text((30, 682), "每天都是美好的一天 🌸", fill=WHITE, font=f20)
+    # Footer bar
+    draw.rectangle([0, H - 46, W, H], fill=ACCENT)
+    draw.text((38, H - 34), "每天都是美好的一天 🌸", fill=WHITE, font=f22)
 
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=90)
+    img.save(buf, format="JPEG", quality=92)
     buf.seek(0)
     return buf
 
-def upload_image(token, img_buf):
-    url = f"https://api.weixin.qq.com/cgi-bin/media/upload?access_token={token}&type=image"
-    files = {"media": ("card.jpg", img_buf, "image/jpeg")}
-    r = requests.post(url, files=files).json()
-    print("Upload image:", r)
-    return r.get("media_id")
+# ── GitHub image hosting ───────────────────────────────────────────
 
-def send_image_to_user(token, open_id, media_id):
-    url = f"https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token={token}"
+def upload_card_to_github(img_buf, token):
+    """Commit card.jpg into the repo; return its raw URL."""
+    path    = "daily_card.jpg"
+    content = base64.b64encode(img_buf.read()).decode()
+    headers = {"Authorization": f"token {token}",
+               "Accept": "application/vnd.github.v3+json"}
+
+    # Fetch existing SHA so we can overwrite
+    sha = None
+    r = requests.get(f"https://api.github.com/repos/{REPO}/contents/{path}",
+                     headers=headers)
+    if r.status_code == 200:
+        sha = r.json().get("sha")
+
+    body = {"message": f"chore: daily card {nowtime.strftime('%Y-%m-%d')}",
+            "content": content, "branch": "master"}
+    if sha:
+        body["sha"] = sha
+
+    r = requests.put(f"https://api.github.com/repos/{REPO}/contents/{path}",
+                     json=body, headers=headers)
+    print("GitHub upload:", r.status_code)
+
+    # Cache-bust with date so WeChat fetches fresh image each day
+    date_str = nowtime.strftime("%Y%m%d")
+    return (f"https://raw.githubusercontent.com/{REPO}/master/{path}?d={date_str}")
+
+# ── 企业微信 news card ─────────────────────────────────────────────
+
+def send_news_card(webhook_url, data, pic_url):
+    title = (f"{data['time']}  |  "
+             f"{weather_emoji(data['weather'])} {data['weather']} "
+             f"{data['tem_low']}~{data['tem_high']}°C  📍{data['city']}")
+    desc  = (f"💨 {data['wind']}\n"
+             f"🎂 距生日还有 {data['birthday_left']} 天  |  "
+             f"🗓 已陪伴 {data['born_days']} 天\n"
+             f"✨ {data['words']}")
+
     payload = {
-        "touser": open_id,
-        "msgtype": "image",
-        "image": {"media_id": media_id}
+        "msgtype": "news",
+        "news": {"articles": [{
+            "title":       title,
+            "description": desc,
+            "url":         "https://github.com/Cynthia-lau/DailyWechat",
+            "picurl":      pic_url
+        }]}
     }
-    r = requests.post(url, json=payload).json()
-    print("Send image:", r)
+    r = requests.post(webhook_url, json=payload).json()
+    print("Webhook:", r)
     return r
 
-def send_template(token, open_id, template_id, data):
-    url = f"https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={token}"
-    payload = {
-        "touser": open_id,
-        "template_id": template_id,
-        "data": {k: {"value": str(v)} for k, v in data.items()}
-    }
-    r = requests.post(url, json=payload).json()
-    print("Send template:", r)
-    return r
+# ── Main ───────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    app_id      = os.getenv("APP_ID")
-    app_secret  = os.getenv("APP_SECRET")
-    template_id = os.getenv("TEMPLATE_ID")
-    weather_key = os.getenv("WEATHER_API_KEY")
+    weather_key  = os.getenv("WEATHER_API_KEY")
+    webhook_url  = os.getenv("WECHAT_WEBHOOK_URL")
+    github_token = os.getenv("GITHUB_TOKEN")
 
-    client = WeChatClient(app_id, app_secret)
-    token  = client.fetch_access_token()['access_token']
-    print(f"Token: {token[:10]}...")
-
-    f = open("users_info.json", encoding="utf-8")
+    f     = open("users_info.json", encoding="utf-8")
     users = json.load(f)['data']
     f.close()
 
     words    = get_words()
     out_time = get_time()
-    print(words, out_time)
+    print(f"Time: {out_time} | Quote: {words}")
 
     for user_info in users:
-        born_date    = user_info['born_date']
-        birthday     = born_date[5:]
-        city         = user_info['city']
-        user_id      = user_info['user_id']
-        name         = user_info['user_name'].upper()
+        born_date = user_info['born_date']
+        city      = user_info['city']
+        name      = user_info['user_name'].upper()
 
         wea_city, weather = get_weather(city, weather_key)
 
@@ -184,21 +217,17 @@ if __name__ == '__main__':
             'tem_low':       weather['low'],
             'wind':          weather['wind_direction'],
             'born_days':     get_count(born_date),
-            'birthday_left': get_birthday(birthday),
+            'birthday_left': get_birthday(born_date[5:]),
             'words':         words,
         }
 
-        # Try sending as image card first, fall back to template
+        print(f"Generating card for {name}...")
         img_buf  = generate_card(card_data)
-        media_id = upload_image(token, img_buf)
+        pic_url  = upload_card_to_github(img_buf, github_token)
+        print(f"Card URL: {pic_url}")
 
-        if media_id:
-            result = send_image_to_user(token, user_id, media_id)
-            if result.get('errcode') == 0:
-                print(f"✅ Image card sent to {name}")
-                continue
-
-        # Fallback: template message
-        print("Falling back to template message...")
-        send_template(token, user_id, template_id, card_data)
-        print(f"✅ Template message sent to {name}")
+        result = send_news_card(webhook_url, card_data, pic_url)
+        if result.get('errcode') == 0:
+            print(f"✅ Sent to {name}")
+        else:
+            print(f"❌ Failed: {result}")
